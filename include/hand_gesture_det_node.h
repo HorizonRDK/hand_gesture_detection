@@ -87,6 +87,11 @@ class HandGestureDetNode : public DnnNode {
   // 模型结构信息, PreProcess需要
   std::vector<hbDNNTensorProperties> input_model_info_;
 
+  std::chrono::high_resolution_clock::time_point output_tp_;
+  int output_frameCount_ = 0;
+  int smart_fps_ = -1;
+  std::mutex frame_stat_mtx_;
+
   int Predict(std::vector<std::shared_ptr<DNNTensor>> &inputs,
               std::vector<std::shared_ptr<OutputDescription>> &output_descs,
               std::shared_ptr<DnnNodeOutput> dnn_output);

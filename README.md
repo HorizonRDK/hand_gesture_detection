@@ -112,13 +112,16 @@ cp -r install/lib/hand_lmk_detection/config/ .
 cp -r install/lib/hand_gesture_detection/config/ .
 
 # 启动图片发布pkg
-ros2 run mipi_cam mipi_cam --ros-args -p out_format:=nv12 -p image_width:=960 -p image_height:=540 -p io_method:=shared_mem --log-level error &
+ros2 run mipi_cam mipi_cam --ros-args -p out_format:=nv12 -p image_width:=960 -p image_height:=544 -p io_method:=shared_mem --log-level error &
+# 启动jpeg图片编码&发布pkg
+ros2 run hobot_codec hobot_codec_republish --ros-args -p channel:=1 -p in_mode:=shared_mem -p in_format:=nv12 -p out_mode:=ros -p out_format:=jpeg -p sub_topic:=/hbmem_img -p pub_topic:=/image_jpeg --ros-args --log-level error &
 # 启动单目rgb人体、人头、人脸、人手框和人体关键点检测pkg
 ros2 run mono2d_body_detection mono2d_body_detection --ros-args --log-level error &
 # 启动人手关键点检测pkg
 ros2 run hand_lmk_detection hand_lmk_detection --ros-args --log-level error &
 # 启动web展示pkg
-ros2 run websocket websocket --ros-args -p image_topic:=/hbmem_img -p image_type:=nv12_hbmem -p image_width:=960 -p image_height:=544 -p smart_topic:=/hobot_hand_gesture_detection -p smart_width:=960 -p smart_height:=544 --log-level error &
+ros2 run websocket websocket --ros-args -p image_topic:=/image_jpeg -p image_type:=mjpeg -p smart_topic:=/hobot_hand_gesture_detection --log-level error &
+
 
 # 启动手势识别pkg
 ros2 run hand_gesture_detection hand_gesture_detection
@@ -137,13 +140,15 @@ cp -r install/lib/hand_lmk_detection/config/ .
 cp -r install/lib/hand_gesture_detection/config/ .
 
 # 启动图片发布pkg
-./install/lib/mipi_cam/mipi_cam --ros-args -p out_format:=nv12 -p image_width:=960 -p image_height:=540 -p io_method:=shared_mem --log-level error &
+./install/lib/mipi_cam/mipi_cam --ros-args -p out_format:=nv12 -p image_width:=960 -p image_height:=544 -p io_method:=shared_mem --log-level error &
+# 启动jpeg图片编码&发布pkg
+./install/lib/hobot_codec/hobot_codec_republish --ros-args -p channel:=1 -p in_mode:=shared_mem -p in_format:=nv12 -p out_mode:=ros -p out_format:=jpeg -p sub_topic:=/hbmem_img -p pub_topic:=/image_jpeg --ros-args --log-level error &
 # 启动单目rgb人体、人头、人脸、人手框和人体关键点检测pkg
 ./install/lib/mono2d_body_detection/mono2d_body_detection --ros-args --log-level error &
 # 启动人手关键点检测pkg
 ./install/lib/hand_lmk_detection/hand_lmk_detection --ros-args --log-level error &
 # 启动web展示pkg
-./install/lib/websocket/websocket --ros-args -p image_topic:=/hbmem_img -p image_type:=nv12_hbmem -p image_width:=960 -p image_height:=544 -p smart_topic:=/hobot_hand_gesture_detection -p smart_width:=960 -p smart_height:=544 --log-level error &
+./install/lib/websocket/websocket --ros-args -p image_topic:=/image_jpeg -p image_type:=mjpeg -p smart_topic:=/hobot_hand_gesture_detection --log-level error &
 
 # 启动手势识别pkg
 ./install/lib/hand_gesture_detection/hand_gesture_detection

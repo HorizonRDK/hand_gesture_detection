@@ -328,6 +328,26 @@ void HandGestureDetNode::AiImgProcess(
       target.set__attributes(tar_attributes);
       pub_ai_msg->targets.emplace_back(target);
     }
+
+    int smart_fps = -1;
+    {
+      auto tp_now = std::chrono::system_clock::now();
+      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
+      output_frameCount_++;
+      auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          tp_now - output_tp_)
+                          .count();
+      if (interval >= 5000) {
+        smart_fps_ = output_frameCount_ / (interval / 1000);
+        output_frameCount_ = 0;
+        output_tp_ = std::chrono::system_clock::now();
+      }
+      smart_fps = smart_fps_;
+    }
+    pub_ai_msg->set__fps(smart_fps);
+    ss << "\t smart_fps: " << smart_fps
+        << "\n";
+
     RCLCPP_WARN(
         rclcpp::get_logger("hand gesture det node"), "%s", ss.str().c_str());
 
