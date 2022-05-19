@@ -89,12 +89,12 @@ colcon build --packages-select hand_gesture_detection \
 
 ## 参数
 
-| 参数名                 | 类型        | 解释                                        | 是否必须 | 支持的配置           | 默认值                       |
-| ---------------------- | ----------- | ------------------------------------------- | -------- | -------------------- | ---------------------------- |
-| is_sync_mode           | int         | 同步/异步推理模式。0：异步模式；1：同步模式 | 否       | 0/1                  | 0                            |
-| model_file_name        | std::string | 推理使用的模型文件                          | 否       | 根据实际模型路径配置 | config/handLMKs.hbm          |
-| ai_msg_pub_topic_name  | std::string | 发布包含人手关键点检测结果的AI消息的topic名 | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection    |
-| ai_msg_sub_topic_name_ | std::string | 订阅包含人手框检测结果的AI消息的topic名     | 否       | 根据实际部署环境配置 | /hobot_mono2d_body_detection |
+| 参数名                 | 类型        | 解释                                        | 是否必须 | 支持的配置           | 默认值                        |
+| ---------------------- | ----------- | ------------------------------------------- | -------- | -------------------- | ----------------------------- |
+| is_sync_mode           | int         | 同步/异步推理模式。0：异步模式；1：同步模式 | 否       | 0/1                  | 0                             |
+| model_file_name        | std::string | 推理使用的模型文件                          | 否       | 根据实际模型路径配置 | config/handLMKs.hbm           |
+| ai_msg_pub_topic_name  | std::string | 发布包含人手关键点检测结果的AI消息的topic名 | 否       | 根据实际部署环境配置 | /hobot_hand_gesture_detection |
+| ai_msg_sub_topic_name_ | std::string | 订阅包含人手框检测结果的AI消息的topic名     | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection     |
 
 ## 运行
 

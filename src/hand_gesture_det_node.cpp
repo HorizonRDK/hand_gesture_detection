@@ -310,7 +310,15 @@ void HandGestureDetNode::AiImgProcess(
         tar_attributes.push_back(attr);
       }
 
-      if (gesture_outputs.find(in_target.track_id) != gesture_outputs.end()) {
+      bool target_has_hand = false;
+      for (const auto& roi : in_target.rois) {
+        if (roi.type == "hand") {
+          target_has_hand = true;
+          break;
+        }
+      }
+      if (target_has_hand &&
+      gesture_outputs.find(in_target.track_id) != gesture_outputs.end()) {
         const auto& gesture_res = gesture_outputs.at(in_target.track_id);
         if (gesture_res && !gesture_res->gesture_res_.empty()) {
           for (const gesture_type& res : gesture_res->gesture_res_) {
