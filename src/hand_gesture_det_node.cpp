@@ -8,6 +8,7 @@
 
 #include "include/hand_gesture_det_node.h"
 
+#include <math.h>
 #include <unistd.h>
 
 #include <fstream>
@@ -211,6 +212,10 @@ void HandGestureDetNode::AiImgProcess(
       gesture_preprocess_->Execute(
           msg, input_model_info_, input_tensors, track_ids, timestamp) != 0 ||
       input_tensors.empty()) {
+    {
+      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
+      output_frameCount_++;
+    }
     msg_publisher_->publish(std::move(ai_msg));
     return;
   }
@@ -318,7 +323,7 @@ void HandGestureDetNode::AiImgProcess(
         }
       }
       if (target_has_hand &&
-      gesture_outputs.find(in_target.track_id) != gesture_outputs.end()) {
+          gesture_outputs.find(in_target.track_id) != gesture_outputs.end()) {
         const auto& gesture_res = gesture_outputs.at(in_target.track_id);
         if (gesture_res && !gesture_res->gesture_res_.empty()) {
           for (const gesture_type& res : gesture_res->gesture_res_) {
@@ -346,15 +351,15 @@ void HandGestureDetNode::AiImgProcess(
                           tp_now - output_tp_)
                           .count();
       if (interval >= 5000) {
-        smart_fps_ = output_frameCount_ / (interval / 1000);
+        smart_fps_ = round(static_cast<float>(output_frameCount_) /
+                           (static_cast<float>(interval) / 1000.0));
         output_frameCount_ = 0;
         output_tp_ = std::chrono::system_clock::now();
       }
       smart_fps = smart_fps_;
     }
     pub_ai_msg->set__fps(smart_fps);
-    ss << "\t smart_fps: " << smart_fps
-        << "\n";
+    ss << "\t smart_fps: " << smart_fps << "\n";
 
     RCLCPP_WARN(
         rclcpp::get_logger("hand gesture det node"), "%s", ss.str().c_str());
