@@ -37,7 +37,6 @@ class HandGestureOutDesc : public OutputDescription {
       : OutputDescription(mode, index, type) {}
   uint64_t track_id;
   uint64_t timestamp;
-  std::shared_ptr<DNNTensor> input_tensor = nullptr;
 };
 
 class HandGestureResult : public DNNResult {

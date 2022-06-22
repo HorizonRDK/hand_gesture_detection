@@ -15,12 +15,14 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "ai_msgs/msg/capture_targets.hpp"
 #include "ai_msgs/msg/perception_targets.hpp"
 #include "dnn_node/dnn_node.h"
 #include "include/gesture_preprocess.h"
 #include "rclcpp/rclcpp.hpp"
+#include "threads/threadpool.h"
 
 #ifndef HAND_GESTURE_DET_NODE_H_
 #define HAND_GESTURE_DET_NODE_H_
@@ -59,6 +61,12 @@ struct HandGestureOutput : public DnnNodeOutput {
   std::shared_ptr<HandGestureRes> gesture_res = nullptr;
 };
 
+struct ThreadPool {
+  hobot::CThreadPool msg_handle_;
+  std::mutex msg_mutex_;
+  int msg_limit_count_ = 10;
+};
+
 class HandGestureDetNode : public DnnNode {
  public:
   HandGestureDetNode(const std::string &node_name,
@@ -82,6 +90,7 @@ class HandGestureDetNode : public DnnNode {
   const int32_t output_index_ = 0;
 
   int is_sync_mode_ = 0;
+  int task_num_ = 4;
 
   std::string ai_msg_pub_topic_name = "/hobot_hand_gesture_detection";
   rclcpp::Publisher<ai_msgs::msg::PerceptionTargets>::SharedPtr msg_publisher_ =
@@ -93,10 +102,13 @@ class HandGestureDetNode : public DnnNode {
   // 模型结构信息, PreProcess需要
   std::vector<hbDNNTensorProperties> input_model_info_;
 
-  std::chrono::high_resolution_clock::time_point output_tp_;
+  std::shared_ptr<std::chrono::high_resolution_clock::time_point> output_tp_ =
+      nullptr;
   int output_frameCount_ = 0;
   int smart_fps_ = -1;
   std::mutex frame_stat_mtx_;
+
+  std::shared_ptr<ThreadPool> thread_pool_ = nullptr;
 
   int Predict(std::vector<std::shared_ptr<DNNTensor>> &inputs,
               std::vector<std::shared_ptr<OutputDescription>> &output_descs,
@@ -105,7 +117,17 @@ class HandGestureDetNode : public DnnNode {
   std::string ai_msg_sub_topic_name_ = "/hobot_hand_lmk_detection";
   rclcpp::Subscription<ai_msgs::msg::PerceptionTargets>::SharedPtr
       ai_msg_subscription_ = nullptr;
-  void AiImgProcess(const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg);
+  void AiMsgProcess(const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg);
+  int TenserProcess(struct timespec preprocess_time_start,
+                     ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg,
+                     std::vector<std::shared_ptr<DNNTensor>> input_tensors,
+                     std::shared_ptr<std::vector<uint64_t>> track_ids,
+                     uint64_t timestamp);
+  void Publish(
+      ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg,
+      ai_msgs::msg::Perf perf_preprocess,
+      const std::unordered_map<uint64_t, std::shared_ptr<HandGestureRes>>
+          &gesture_outputs);
 
   int GetModelIOInfo();
 

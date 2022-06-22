@@ -32,6 +32,20 @@
 #include "opencv2/imgproc.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+builtin_interfaces::msg::Time ConvertToRosTime(
+    const struct timespec& time_spec) {
+  builtin_interfaces::msg::Time stamp;
+  stamp.set__sec(time_spec.tv_sec);
+  stamp.set__nanosec(time_spec.tv_nsec);
+  return stamp;
+}
+
+int CalTimeMsDuration(const builtin_interfaces::msg::Time& start,
+                      const builtin_interfaces::msg::Time& end) {
+  return (end.sec - start.sec) * 1000 + end.nanosec / 1000 / 1000 -
+         start.nanosec / 1000 / 1000;
+}
+
 namespace inference {
 HandGestureDetNode::HandGestureDetNode(const std::string& node_name,
                                        const NodeOptions& options)
@@ -78,6 +92,9 @@ HandGestureDetNode::HandGestureDetNode(const std::string& node_name,
   gesture_preprocess_ =
       std::make_shared<GesturePreProcess>(gesture_preprocess_config_);
 
+  thread_pool_ = std::make_shared<ThreadPool>();
+  thread_pool_->msg_handle_.CreatThread(task_num_);
+
   RCLCPP_WARN(rclcpp::get_logger("hand gesture det node"),
               "Create subscription with topic_name: %s",
               ai_msg_sub_topic_name_.c_str());
@@ -86,7 +103,7 @@ HandGestureDetNode::HandGestureDetNode(const std::string& node_name,
           ai_msg_sub_topic_name_,
           10,
           std::bind(
-              &HandGestureDetNode::AiImgProcess, this, std::placeholders::_1));
+              &HandGestureDetNode::AiMsgProcess, this, std::placeholders::_1));
 
   RCLCPP_WARN(rclcpp::get_logger("hand gesture det node"),
               "ai_msg_pub_topic_name: %s",
@@ -105,16 +122,16 @@ int HandGestureDetNode::SetNodePara() {
   dnn_node_para_ptr_->model_file = model_file_name_;
   dnn_node_para_ptr_->model_name = model_name_;
   dnn_node_para_ptr_->model_task_type = model_task_type_;
-  dnn_node_para_ptr_->task_num = 2;
+  dnn_node_para_ptr_->task_num = task_num_;
   return 0;
 }
 
 int HandGestureDetNode::SetOutputParser() {
-  RCLCPP_INFO(rclcpp::get_logger("mono2d_body_det"), "Set output parser.");
+  RCLCPP_INFO(rclcpp::get_logger("hand_gesture_det"), "Set output parser.");
   // set output parser
   auto model_manage = GetModel();
   if (!model_manage || !dnn_node_para_ptr_) {
-    RCLCPP_ERROR(rclcpp::get_logger("mono2d_body_det"), "Invalid model");
+    RCLCPP_ERROR(rclcpp::get_logger("hand_gesture_det"), "Invalid model");
     return -1;
   }
 
@@ -183,59 +200,147 @@ int HandGestureDetNode::Predict(
       inputs, output_descs, dnn_output, is_sync_mode_ == 1 ? true : false);
 }
 
-void HandGestureDetNode::AiImgProcess(
-    const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg) {
-  if (!msg || !rclcpp::ok()) {
-    return;
-  }
+void HandGestureDetNode::Publish(
+    ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg,
+    ai_msgs::msg::Perf perf_preprocess,
+    const std::unordered_map<uint64_t, std::shared_ptr<HandGestureRes>>&
+        gesture_outputs) {
+  // append gesture to ai msg and publish ai msg
+  ai_msgs::msg::PerceptionTargets::UniquePtr pub_ai_msg(
+      new ai_msgs::msg::PerceptionTargets());
+  pub_ai_msg->set__header(msg->header);
+  pub_ai_msg->set__fps(msg->fps);
+  pub_ai_msg->set__perfs(msg->perfs);
+  pub_ai_msg->set__disappeared_targets(msg->disappeared_targets);
 
   std::stringstream ss;
-  ss << "Recved ai msg"
-     << ", frame_id: " << msg->header.frame_id
-     << ", stamp: " << msg->header.stamp.sec << "_"
-     << msg->header.stamp.nanosec;
+  ss << "publish msg"
+     << ", frame_id: " << pub_ai_msg->header.frame_id
+     << ", stamp: " << pub_ai_msg->header.stamp.sec << "_"
+     << msg->header.stamp.nanosec << "\n";
+  for (const auto& in_target : msg->targets) {
+    ai_msgs::msg::Target target;
+    target.set__type(in_target.type);
+    target.set__rois(in_target.rois);
+    target.set__captures(in_target.captures);
+    target.set__track_id(in_target.track_id);
+    target.set__points(in_target.points);
+    target.set__attributes(in_target.attributes);
+
+    bool target_has_hand = false;
+    for (const auto& roi : in_target.rois) {
+      if (roi.type == "hand") {
+        target_has_hand = true;
+        break;
+      }
+    }
+    if (target_has_hand &&
+        gesture_outputs.find(in_target.track_id) != gesture_outputs.end()) {
+      const auto& gesture_res = gesture_outputs.at(in_target.track_id);
+      if (gesture_res && !gesture_res->gesture_res_.empty()) {
+        for (const gesture_type& res : gesture_res->gesture_res_) {
+          ai_msgs::msg::Attribute attr;
+          attr.set__type("gesture");
+          attr.set__value(static_cast<int>(res));
+          target.attributes.emplace_back(attr);
+          ss << "\t target id: " << in_target.track_id
+             << ", attr type: " << attr.type.data() << ", val: " << attr.value
+             << "\n";
+        }
+      }
+    }
+    pub_ai_msg->targets.emplace_back(target);
+  }
+
+  {
+    std::unique_lock<std::mutex> lk(frame_stat_mtx_);
+    if (!output_tp_) {
+      output_tp_ =
+          std::make_shared<std::chrono::high_resolution_clock::time_point>();
+      *output_tp_ = std::chrono::system_clock::now();
+    }
+    auto tp_now = std::chrono::system_clock::now();
+    output_frameCount_++;
+    auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        tp_now - *output_tp_)
+                        .count();
+    if (interval >= 1000) {
+      float out_fps = static_cast<float>(output_frameCount_) /
+                      (static_cast<float>(interval) / 1000.0);
+      RCLCPP_WARN(rclcpp::get_logger("hand_gesture_det"),
+                  "Pub smart fps %.2f",
+                  out_fps);
+
+      smart_fps_ = round(out_fps);
+      output_frameCount_ = 0;
+      *output_tp_ = std::chrono::system_clock::now();
+    }
+  }
+
+  if (smart_fps_ > 0) {
+    pub_ai_msg->set__fps(smart_fps_);
+  }
+
   RCLCPP_INFO(
       rclcpp::get_logger("hand gesture det node"), "%s", ss.str().c_str());
 
+  pub_ai_msg->perfs.push_back(perf_preprocess);
+
+  struct timespec time_now = {0, 0};
+  clock_gettime(CLOCK_REALTIME, &time_now);
+
+  ai_msgs::msg::Perf perf_predict;
+  perf_predict.set__type(model_name_ + "_predict");
+  perf_predict.stamp_start = perf_preprocess.stamp_end;
+  perf_predict.set__stamp_end(ConvertToRosTime(time_now));
+  perf_predict.set__time_ms_duration(
+      CalTimeMsDuration(perf_predict.stamp_start, perf_predict.stamp_end));
+  pub_ai_msg->perfs.emplace_back(perf_predict);
+
+  ai_msgs::msg::Perf perf_postprocess;
+  perf_postprocess.set__type(model_name_ + "_postprocess");
+  perf_postprocess.set__stamp_start(ConvertToRosTime(time_now));
+  clock_gettime(CLOCK_REALTIME, &time_now);
+  perf_postprocess.set__stamp_end(ConvertToRosTime(time_now));
+  perf_postprocess.set__time_ms_duration(CalTimeMsDuration(
+      perf_postprocess.stamp_start, perf_postprocess.stamp_end));
+  pub_ai_msg->perfs.emplace_back(perf_postprocess);
+
+  // 从发布图像到发布AI结果的延迟
+  ai_msgs::msg::Perf perf_pipeline;
+  perf_pipeline.set__type(model_name_ + "_pipeline");
+  perf_pipeline.set__stamp_start(pub_ai_msg->header.stamp);
+  perf_pipeline.set__stamp_end(perf_postprocess.stamp_end);
+  perf_pipeline.set__time_ms_duration(
+      CalTimeMsDuration(perf_pipeline.stamp_start, perf_pipeline.stamp_end));
+  pub_ai_msg->perfs.push_back(perf_pipeline);
+
+  msg_publisher_->publish(std::move(pub_ai_msg));
+}
+
+int HandGestureDetNode::TenserProcess(
+    struct timespec preprocess_time_start,
+    ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg,
+    std::vector<std::shared_ptr<DNNTensor>> input_tensors,
+    std::shared_ptr<std::vector<uint64_t>> track_ids,
+    uint64_t timestamp) {
+  ai_msgs::msg::Perf perf_preprocess;
+  perf_preprocess.set__stamp_start(ConvertToRosTime(preprocess_time_start));
+  perf_preprocess.set__type(model_name_ + "_preprocess");
+
   auto model_manage = GetModel();
   if (!model_manage) {
-    RCLCPP_ERROR(rclcpp::get_logger("mono2d_body_det"), "Invalid model");
-    return;
-  }
-
-  std::vector<std::vector<DNNTensor>> input_tensors;
-  std::vector<uint64_t> track_ids;
-
-  ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg(
-      new ai_msgs::msg::PerceptionTargets());
-  ai_msg->set__header(msg->header);
-  ai_msg->set__fps(msg->fps);
-  ai_msg->set__targets(msg->targets);
-  ai_msg->set__disappeared_targets(msg->disappeared_targets);
-  ai_msg->set__perfs(msg->perfs);
-  uint64_t timestamp;
-  if (!gesture_preprocess_ ||
-      gesture_preprocess_->Execute(
-          msg, input_model_info_, input_tensors, track_ids, timestamp) != 0 ||
-      input_tensors.empty()) {
-    {
-      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
-      output_frameCount_++;
-    }
-    msg_publisher_->publish(std::move(ai_msg));
-    return;
+    RCLCPP_ERROR(rclcpp::get_logger("hand_gesture_det"), "Invalid model");
+    return -1;
   }
 
   std::unordered_map<uint64_t, std::shared_ptr<HandGestureRes>> gesture_outputs;
   for (size_t idx = 0; idx < input_tensors.size(); idx++) {
-    uint64_t track_id = track_ids.at(idx);
+    uint64_t track_id = track_ids->at(idx);
     auto handgesture_output_desc = std::make_shared<HandGestureOutDesc>(
         model_manage, output_index_, "gesture_branch");
     handgesture_output_desc->timestamp = timestamp;
     handgesture_output_desc->track_id = track_id;
-    handgesture_output_desc->input_tensor =
-        std::make_shared<DNNTensor>(input_tensors.at(idx).front());
-
     std::vector<std::shared_ptr<OutputDescription>> output_descs{
         std::dynamic_pointer_cast<OutputDescription>(handgesture_output_desc)};
 
@@ -247,8 +352,13 @@ void HandGestureDetNode::AiImgProcess(
     dnn_output->gesture_res->is_promised_ = false;
     dnn_output->timestamp = timestamp;
 
-    std::vector<std::shared_ptr<DNNTensor>> inputs{
-        handgesture_output_desc->input_tensor};
+    std::vector<std::shared_ptr<DNNTensor>> inputs{input_tensors.at(idx)};
+
+    struct timespec time_now = {0, 0};
+    clock_gettime(CLOCK_REALTIME, &time_now);
+    perf_preprocess.set__stamp_end(ConvertToRosTime(time_now));
+    perf_preprocess.set__time_ms_duration(CalTimeMsDuration(
+        perf_preprocess.stamp_start, perf_preprocess.stamp_end));
 
     uint32_t ret = 0;
     // 3. 开始预测
@@ -258,119 +368,135 @@ void HandGestureDetNode::AiImgProcess(
     if (ret != 0) {
       RCLCPP_ERROR(rclcpp::get_logger("hand gesture det node"),
                    "Run predict failed!");
-      return;
+      return ret;
     }
   }
-
-  // todo 20220428 move to thread pool
   // 等待所有input_tensor都推理完成
   // 一帧中可能包含多个target，即多个input_tensor，每个input_tensor对应一个PostProcess，PostProcess中设置推理完成标志
   // 所有input_tensor都推理完成后才会将此帧数据pub出去
-  bool has_waited = false;
   for (auto& res : gesture_outputs) {
     std::shared_ptr<HandGestureRes>& gesture_info = res.second;
     if (!gesture_info) {
       continue;
     }
     if (!gesture_info->is_promised_) {
-      if (has_waited) {
-        // 已经等待过了，所有roi只需要等待一次
-        continue;
+      auto fut_ = gesture_info->prom_.get_future();
+      int time_out_ms = 50;
+      if (fut_.wait_for(std::chrono::milliseconds(time_out_ms)) ==
+          std::future_status::ready) {
+        gesture_info->is_promised_ = true;
       } else {
-        has_waited = true;
-        auto fut_ = gesture_info->prom_.get_future();
-        int time_out_ms = 50;
-        if (fut_.wait_for(std::chrono::milliseconds(time_out_ms)) ==
-            std::future_status::ready) {
-          gesture_info->is_promised_ = true;
-        } else {
-          gesture_info->is_promised_ = false;
-          continue;
-        }
+        gesture_info->is_promised_ = false;
+        continue;
       }
-    } else {
-      // do nothing
     }
   }
 
   if (msg_publisher_) {
-    // append gesture to ai msg and publish ai msg
-    ai_msgs::msg::PerceptionTargets::UniquePtr pub_ai_msg(
-        new ai_msgs::msg::PerceptionTargets());
-    pub_ai_msg->set__header(msg->header);
-    pub_ai_msg->set__fps(msg->fps);
-    pub_ai_msg->set__perfs(msg->perfs);
-    pub_ai_msg->set__disappeared_targets(msg->disappeared_targets);
+    Publish(msg, perf_preprocess, gesture_outputs);
+  }
 
-    std::stringstream ss;
-    ss << "publish msg"
-       << ", frame_id: " << pub_ai_msg->header.frame_id
-       << ", stamp: " << pub_ai_msg->header.stamp.sec << "_"
-       << msg->header.stamp.nanosec << "\n";
-    for (const auto& in_target : msg->targets) {
-      ai_msgs::msg::Target target;
-      target.set__type(in_target.type);
-      target.set__rois(in_target.rois);
-      target.set__captures(in_target.captures);
-      target.set__track_id(in_target.track_id);
-      target.set__points(in_target.points);
+  return 0;
+}
 
-      // 缓存target的attr
-      std::vector<ai_msgs::msg::Attribute> tar_attributes;
-      for (const auto& attr : in_target.attributes) {
-        tar_attributes.push_back(attr);
-      }
+void HandGestureDetNode::AiMsgProcess(
+    const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg) {
+  if (!msg || !rclcpp::ok()) {
+    return;
+  }
 
-      bool target_has_hand = false;
-      for (const auto& roi : in_target.rois) {
-        if (roi.type == "hand") {
-          target_has_hand = true;
-          break;
-        }
-      }
-      if (target_has_hand &&
-          gesture_outputs.find(in_target.track_id) != gesture_outputs.end()) {
-        const auto& gesture_res = gesture_outputs.at(in_target.track_id);
-        if (gesture_res && !gesture_res->gesture_res_.empty()) {
-          for (const gesture_type& res : gesture_res->gesture_res_) {
-            ai_msgs::msg::Attribute attr;
-            attr.set__type("gesture");
-            attr.set__value(static_cast<int>(res));
-            tar_attributes.push_back(attr);
+  struct timespec preprocess_time_start = {0, 0};
+  clock_gettime(CLOCK_REALTIME, &preprocess_time_start);
 
-            ss << "\t target id: " << in_target.track_id
-               << ", attr type: " << attr.type.data() << ", val: " << attr.value
-               << "\n";
-          }
-        }
-      }
-      target.set__attributes(tar_attributes);
-      pub_ai_msg->targets.emplace_back(target);
+  {
+    std::unique_lock<std::mutex> lk(frame_stat_mtx_);
+    static auto tp_tp = std::chrono::system_clock::now();
+    static int output_frameCount = 0;
+    auto tp_now = std::chrono::system_clock::now();
+    output_frameCount++;
+    auto interval =
+        std::chrono::duration_cast<std::chrono::milliseconds>(tp_now - tp_tp)
+            .count();
+    if (interval >= 1000) {
+      float fps = static_cast<float>(output_frameCount) /
+                  (static_cast<float>(interval) / 1000.0);
+      RCLCPP_WARN(
+          rclcpp::get_logger("hand_gesture_det"), "Sub smart fps %.2f", fps);
+      tp_tp = std::chrono::system_clock::now();
+      output_frameCount = 0;
     }
+  }
 
-    int smart_fps = -1;
+  std::stringstream ss;
+  ss << "Recved ai msg"
+     << ", frame_id: " << msg->header.frame_id
+     << ", stamp: " << msg->header.stamp.sec << "_"
+     << msg->header.stamp.nanosec;
+  RCLCPP_INFO(
+      rclcpp::get_logger("hand gesture det node"), "%s", ss.str().c_str());
+
+  auto pub_msg = [this, msg]() {
+    ai_msgs::msg::PerceptionTargets::UniquePtr ai_msg(
+        new ai_msgs::msg::PerceptionTargets());
+    ai_msg->set__header(msg->header);
+    ai_msg->set__fps(msg->fps);
+    ai_msg->set__targets(msg->targets);
+    ai_msg->set__disappeared_targets(msg->disappeared_targets);
+    ai_msg->set__perfs(msg->perfs);
+    msg_publisher_->publish(std::move(ai_msg));
+  };
+
+  std::vector<std::shared_ptr<DNNTensor>> input_tensors;
+  std::shared_ptr<std::vector<uint64_t>> track_ids =
+      std::make_shared<std::vector<uint64_t>>();
+  uint64_t timestamp;
+  if (!gesture_preprocess_ ||
+      gesture_preprocess_->Execute(
+          msg, input_model_info_, input_tensors, *track_ids, timestamp) != 0 ||
+      input_tensors.empty()) {
     {
-      auto tp_now = std::chrono::system_clock::now();
       std::unique_lock<std::mutex> lk(frame_stat_mtx_);
       output_frameCount_++;
-      auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          tp_now - output_tp_)
-                          .count();
-      if (interval >= 5000) {
-        smart_fps_ = round(static_cast<float>(output_frameCount_) /
-                           (static_cast<float>(interval) / 1000.0));
-        output_frameCount_ = 0;
-        output_tp_ = std::chrono::system_clock::now();
-      }
-      smart_fps = smart_fps_;
     }
-    pub_ai_msg->set__fps(smart_fps);
-    ss << "\t smart_fps: " << smart_fps << "\n";
 
-    RCLCPP_WARN(
-        rclcpp::get_logger("hand gesture det node"), "%s", ss.str().c_str());
+    pub_msg();
+    return;
+  }
 
-    msg_publisher_->publish(std::move(pub_ai_msg));
+  if (is_sync_mode_) {
+    if (TenserProcess(
+            preprocess_time_start, msg, input_tensors, track_ids, timestamp) <
+        0) {
+      pub_msg();
+      return;
+    }
+  } else {
+    std::lock_guard<std::mutex> lock(thread_pool_->msg_mutex_);
+    if (thread_pool_->msg_handle_.GetTaskNum() >=
+        thread_pool_->msg_limit_count_) {
+      RCLCPP_WARN(rclcpp::get_logger("dnn"),
+                  "Task Size: %d exceeds limit: %d",
+                  thread_pool_->msg_handle_.GetTaskNum(),
+                  thread_pool_->msg_limit_count_);
+      pub_msg();
+      return;
+    }
+
+    auto infer_task = [this,
+                       preprocess_time_start,
+                       msg,
+                       input_tensors,
+                       track_ids,
+                       timestamp,
+                       pub_msg]() {
+      if (TenserProcess(
+              preprocess_time_start, msg, input_tensors, track_ids, timestamp) <
+          0) {
+        pub_msg();
+        return;
+      }
+    };
+    thread_pool_->msg_handle_.PostTask(infer_task);
   }
 }
 

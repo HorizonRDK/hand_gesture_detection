@@ -23,7 +23,6 @@
 #include "rclcpp/rclcpp.hpp"
 
 namespace inference {
-
 void InputFloat2Int(int8_t* feat_buffer1,
                     int input_quanti_factor,
                     float* BPU_input_data,
@@ -141,12 +140,11 @@ int GetHWCIndex(DataType data_type,
   return 0;
 }
 
-int AllocModelTensor(std::vector<DNNTensor>& tensors,
+int AllocModelTensor(std::shared_ptr<DNNTensor>& tensor_ptr,
                      bool need_alloc = true,
                      int batch = 1) {
-  int layer_num = tensors.size();
-  for (int layer_idx = 0; layer_idx < layer_num; layer_idx++) {
-    DNNTensor& tensor = tensors[layer_idx];
+  if (tensor_ptr) {
+    DNNTensor& tensor = *tensor_ptr;
     hbDNNTensorProperties info = tensor.properties;
     // sysMem
     int h_idx, w_idx, c_idx;
@@ -253,7 +251,7 @@ int AllocModelTensor(std::vector<DNNTensor>& tensors,
       }
       default:
         std::stringstream ss;
-        ss << "not support tensorType: " << info.tensorType;
+        ss << "AllocModelTensor not support tensorType: " << info.tensorType;
         RCLCPP_ERROR(rclcpp::get_logger("pre process"), "%s", ss.str().c_str());
         return -1;
     }
@@ -261,47 +259,64 @@ int AllocModelTensor(std::vector<DNNTensor>& tensors,
   return 0;
 }
 
-int FreeTensor(std::vector<DNNTensor>& tensors) {
-  for (size_t i = 0; i < tensors.size(); i++) {
-    DNNTensor& tensor = tensors[i];
-    switch (tensor.properties.tensorType) {
-      case IMG_TYPE_NV12:
-      case TENSOR_TYPE_S4:
-      case TENSOR_TYPE_U4:
-      case TENSOR_TYPE_S8:
-      case TENSOR_TYPE_U8:
-      case TENSOR_TYPE_F16:
-      case TENSOR_TYPE_S16:
-      case TENSOR_TYPE_U16:
-      case TENSOR_TYPE_F32:
-      case TENSOR_TYPE_S32:
-      case TENSOR_TYPE_U32:
-      case TENSOR_TYPE_F64:
-      case TENSOR_TYPE_S64:
-      case TENSOR_TYPE_U64: {
-        hbSysMem mem = {tensor.sysMem[0].phyAddr,
+int AllocModelTensors(std::vector<std::shared_ptr<DNNTensor>>& tensors) {
+  int layer_num = tensors.size();
+  for (int layer_idx = 0; layer_idx < layer_num; layer_idx++) {
+    if (!tensors.at(layer_idx)) {
+      continue;
+    }
+    AllocModelTensor(tensors.at(layer_idx));
+  }
+  return 0;
+}
+
+int FreeTensor(DNNTensor& tensor) {
+  switch (tensor.properties.tensorType) {
+    case IMG_TYPE_NV12:
+    case TENSOR_TYPE_S4:
+    case TENSOR_TYPE_U4:
+    case TENSOR_TYPE_S8:
+    case TENSOR_TYPE_U8:
+    case TENSOR_TYPE_F16:
+    case TENSOR_TYPE_S16:
+    case TENSOR_TYPE_U16:
+    case TENSOR_TYPE_F32:
+    case TENSOR_TYPE_S32:
+    case TENSOR_TYPE_U32:
+    case TENSOR_TYPE_F64:
+    case TENSOR_TYPE_S64:
+    case TENSOR_TYPE_U64: {
+      hbSysMem mem = {tensor.sysMem[0].phyAddr,
+                      tensor.sysMem[0].virAddr,
+                      tensor.sysMem[0].memSize};
+      hbSysFreeMem(&mem);
+      break;
+    }
+    case IMG_TYPE_NV12_SEPARATE: {
+      hbSysMem mem_0 = {tensor.sysMem[0].phyAddr,
                         tensor.sysMem[0].virAddr,
                         tensor.sysMem[0].memSize};
-        hbSysFreeMem(&mem);
-        break;
-      }
-      case IMG_TYPE_NV12_SEPARATE: {
-        hbSysMem mem_0 = {tensor.sysMem[0].phyAddr,
-                          tensor.sysMem[0].virAddr,
-                          tensor.sysMem[0].memSize};
-        hbSysMem mem_1 = {tensor.sysMem[1].phyAddr,
-                          tensor.sysMem[1].virAddr,
-                          tensor.sysMem[1].memSize};
-        hbSysFreeMem(&mem_0);
-        hbSysFreeMem(&mem_1);
-        break;
-      }
-      default:
-        std::stringstream ss;
-        ss << "not support tensorType: " << tensor.properties.tensorType;
-        RCLCPP_ERROR(rclcpp::get_logger("pre process"), "%s", ss.str().c_str());
-        break;
+      hbSysMem mem_1 = {tensor.sysMem[1].phyAddr,
+                        tensor.sysMem[1].virAddr,
+                        tensor.sysMem[1].memSize};
+      hbSysFreeMem(&mem_0);
+      hbSysFreeMem(&mem_1);
+      break;
     }
+    default:
+      std::stringstream ss;
+      ss << "FreeTensor not support tensorType: "
+         << tensor.properties.tensorType;
+      RCLCPP_ERROR(rclcpp::get_logger("pre process"), "%s", ss.str().c_str());
+      break;
+  }
+  return 0;
+}
+
+int FreeTensors(std::vector<DNNTensor>& tensors) {
+  for (size_t i = 0; i < tensors.size(); i++) {
+    DNNTensor& tensor = tensors[i];
+    FreeTensor(tensor);
   }
   tensors.clear();
   return 0;
@@ -322,7 +337,7 @@ int PrepareModelTensorProperties(
 int GesturePreProcess::Execute(
     const ai_msgs::msg::PerceptionTargets::ConstSharedPtr ai_msg,
     const std::vector<hbDNNTensorProperties>& input_model_info_,
-    std::vector<std::vector<DNNTensor>>& input_tensors,
+    std::vector<std::shared_ptr<DNNTensor>>& input_tensors,
     std::vector<uint64_t>& track_ids,
     uint64_t& ts) {
   // 防止越界
@@ -410,8 +425,6 @@ int GesturePreProcess::Execute(
       }
 
       for (size_t roi_idx = 0; roi_idx < rois.size(); ++roi_idx) {
-        std::vector<DNNTensor> input_tensors_;
-
         auto roi = rois[roi_idx];
         auto lmks = lmkses[roi_idx];
 
@@ -422,109 +435,113 @@ int GesturePreProcess::Execute(
         auto cached_kpses = std::make_shared<
             std::vector<std::shared_ptr<inference::Landmarks>>>();
         // currently only support gesture detection
-
         RCLCPP_DEBUG(
             rclcpp::get_logger("preprocess"), "in kps->size: %d", lmks->size());
-
         lmks_proc_.Execute(track_id, roi, lmks, cached_kpses, timestamp);
         if (cached_kpses->size() < static_cast<uint32_t>(seq_len_)) {
           continue;
-        } else {
-          // prepare tensor properties
-          PrepareModelTensorProperties(input_model_info_, input_tensors_);
-          static std::vector<int> input_valid_shape;
-          static std::vector<int> input_aligned_shape;
-          static std::once_flag flag;
-          std::call_once(flag, [&input_tensors_] {
-            for (int i = 0;
-                 i < input_tensors_[0].properties.validShape.numDimensions;
-                 ++i) {
-              input_valid_shape.push_back(
-                  input_tensors_[0].properties.validShape.dimensionSize[i]);
-            }
-            for (int i = 0;
-                 i < input_tensors_[0].properties.alignedShape.numDimensions;
-                 ++i) {
-              input_aligned_shape.push_back(
-                  input_tensors_[0].properties.alignedShape.dimensionSize[i]);
-              input_size *= input_aligned_shape[i];
-            }
-          });
+        }
 
-          RCLCPP_DEBUG(rclcpp::get_logger("prepro"),
-                       "input_aligned_shape: %d %d %d %d",
+        std::shared_ptr<DNNTensor> input_tensor_ptr =
+            std::shared_ptr<DNNTensor>(new DNNTensor(),
+                                       [this](DNNTensor* tensors_ptr) {
+                                         if (tensors_ptr) {
+                                           FreeTensor(*tensors_ptr);
+                                           delete tensors_ptr;
+                                           tensors_ptr = nullptr;
+                                         }
+                                       });
+
+        // prepare tensor properties
+        std::vector<DNNTensor> tensors;
+        PrepareModelTensorProperties(input_model_info_, tensors);
+        *input_tensor_ptr = tensors.front();
+        static std::vector<int> input_valid_shape;
+        static std::vector<int> input_aligned_shape;
+        static std::once_flag flag;
+        std::call_once(flag, [&input_tensor_ptr] {
+          for (int i = 0;
+               i < input_tensor_ptr->properties.validShape.numDimensions;
+               ++i) {
+            input_valid_shape.push_back(
+                input_tensor_ptr->properties.validShape.dimensionSize[i]);
+          }
+          for (int i = 0;
+               i < input_tensor_ptr->properties.alignedShape.numDimensions;
+               ++i) {
+            input_aligned_shape.push_back(
+                input_tensor_ptr->properties.alignedShape.dimensionSize[i]);
+            input_size *= input_aligned_shape[i];
+          }
+        });
+
+        RCLCPP_DEBUG(rclcpp::get_logger("prepro"),
+                     "input_aligned_shape: %d %d %d %d",
+                     input_aligned_shape[0],
+                     input_aligned_shape[1],
+                     input_aligned_shape[2],
+                     input_aligned_shape[3]);
+        RCLCPP_DEBUG(rclcpp::get_logger("prepro"),
+                     "input_valid_shape: %d %d %d %d",
+                     input_valid_shape[0],
+                     input_valid_shape[1],
+                     input_valid_shape[2],
+                     input_valid_shape[3]);
+
+        // tensor with aligned shape, padding 0
+        LmksProcessTensor tensor(input_aligned_shape[0],
+                                 input_aligned_shape[1],
+                                 input_aligned_shape[2],
+                                 input_aligned_shape[3]);
+        for (int nn = 0; nn < input_valid_shape[0]; ++nn) {
+          for (int hh = 0; hh < input_valid_shape[1]; ++hh) {
+            for (int ww = 0; ww < input_valid_shape[2]; ++ww) {
+              int cached_data_idx = input_valid_shape[2] == seq_len_ ? ww : hh;
+              int kps_idx = input_valid_shape[1] == kps_len_ ? hh : ww;
+              auto cur_kps = cached_kpses->at(cached_data_idx);
+              tensor.Set(nn, hh, ww, 0, cur_kps->at(kps_idx).x);
+              tensor.Set(nn, hh, ww, 1, cur_kps->at(kps_idx).y);
+              tensor.Set(nn, hh, ww, 2, cur_kps->at(kps_idx).score);
+            }
+          }
+        }
+
+        float* BPU_input_data = tensor.data.data();
+        feature_buf = static_cast<int8_t*>(malloc(input_size));
+        int input_quanti_factor = 1 << input_shift_;
+        InputFloat2Int(feature_buf,
+                       input_quanti_factor,
+                       BPU_input_data,
                        input_aligned_shape[0],
                        input_aligned_shape[1],
                        input_aligned_shape[2],
-                       input_aligned_shape[3]);
-          RCLCPP_DEBUG(rclcpp::get_logger("prepro"),
-                       "input_valid_shape: %d %d %d %d",
-                       input_valid_shape[0],
-                       input_valid_shape[1],
-                       input_valid_shape[2],
-                       input_valid_shape[3]);
-
-          // tensor with aligned shape, padding 0
-          LmksProcessTensor tensor(input_aligned_shape[0],
-                                   input_aligned_shape[1],
-                                   input_aligned_shape[2],
-                                   input_aligned_shape[3]);
-          for (int nn = 0; nn < input_valid_shape[0]; ++nn) {
-            for (int hh = 0; hh < input_valid_shape[1]; ++hh) {
-              for (int ww = 0; ww < input_valid_shape[2]; ++ww) {
-                int cached_data_idx =
-                    input_valid_shape[2] == seq_len_ ? ww : hh;
-                int kps_idx = input_valid_shape[1] == kps_len_ ? hh : ww;
-                auto cur_kps = cached_kpses->at(cached_data_idx);
-                tensor.Set(nn, hh, ww, 0, cur_kps->at(kps_idx).x);
-                tensor.Set(nn, hh, ww, 1, cur_kps->at(kps_idx).y);
-                tensor.Set(nn, hh, ww, 2, cur_kps->at(kps_idx).score);
-              }
-            }
-          }
-
-          float* BPU_input_data = tensor.data.data();
-          feature_buf = static_cast<int8_t*>(malloc(input_size));
-          int input_quanti_factor = 1 << input_shift_;
-          InputFloat2Int(feature_buf,
-                         input_quanti_factor,
-                         BPU_input_data,
-                         input_aligned_shape[0],
-                         input_aligned_shape[1],
-                         input_aligned_shape[2],
-                         input_aligned_shape[3],
-                         input_size);
-        }
+                       input_aligned_shape[3],
+                       input_size);
 
         // 申请Tensor
-        AllocModelTensor(input_tensors_);
-        if (input_tensors_.size() != 1) {
-          RCLCPP_ERROR(rclcpp::get_logger("pre pro"),
-                       "input tensor size: %d need to be 1",
-                       input_tensors_.size());
-          return -1;
-        }
-        auto& input_tensor = input_tensors_[0];
-
-        if (input_tensor.properties.tensorType == inference::TENSOR_TYPE_S8) {
-          if (static_cast<int>(input_tensor.sysMem[0].memSize) != input_size) {
+        AllocModelTensor(input_tensor_ptr);
+        if (input_tensor_ptr->properties.tensorType ==
+            inference::TENSOR_TYPE_S8) {
+          if (static_cast<int>(input_tensor_ptr->sysMem[0].memSize) !=
+              input_size) {
             RCLCPP_ERROR(rclcpp::get_logger("pre pro"),
                          "allocated input size: %d need: %d",
-                         input_tensor.sysMem[0].memSize,
+                         input_tensor_ptr->sysMem[0].memSize,
                          input_size);
             return -1;
           }
-          memcpy(input_tensor.sysMem[0].virAddr,
+          memcpy(input_tensor_ptr->sysMem[0].virAddr,
                  reinterpret_cast<uint8_t*>(feature_buf),
-                 input_tensor.sysMem[0].memSize);
+                 input_tensor_ptr->sysMem[0].memSize);
         } else {
-          RCLCPP_ERROR(rclcpp::get_logger("pre pro"),
-                       "not support data type: %d",
-                       static_cast<int>(input_tensor.properties.tensorType));
+          RCLCPP_ERROR(
+              rclcpp::get_logger("pre pro"),
+              "Execute not support data type: %d",
+              static_cast<int>(input_tensor_ptr->properties.tensorType));
           return -1;
         }
 
-        input_tensors.push_back(input_tensors_);
+        input_tensors.emplace_back(input_tensor_ptr);
         track_ids.push_back(track_id);
 
         if (feature_buf) {

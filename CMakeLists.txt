@@ -61,6 +61,7 @@ add_executable(${PROJECT_NAME}
   src/lmks_process.cpp
   src/gesture_postprocess.cpp
   src/gesture_postprocess_util.cc
+  src/threads/threadpool.cpp
 )
 
 ament_target_dependencies(

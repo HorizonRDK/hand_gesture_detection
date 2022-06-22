@@ -52,13 +52,6 @@ int32_t HandGestureOutputParser::Parse(
     return -1;
   }
 
-  if (hand_gesture_output_desc->input_tensor) {
-    std::vector<DNNTensor> tensors{*hand_gesture_output_desc->input_tensor};
-    if (FreeTensor(tensors) != 0) {
-      RCLCPP_ERROR(rclcpp::get_logger("parser"), "free tensor fail!");
-    }
-  }
-
   auto track_id = hand_gesture_output_desc->track_id;
   hand_gesture_output->gesture_res = gesture_post_process_->Execute(
       output_tensor, track_id, hand_gesture_output_desc->timestamp);

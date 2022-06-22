@@ -32,8 +32,6 @@ using inference::DataType;
 using inference::FloatTensor;
 using inference::TensorLayout;
 
-int FreeTensor(std::vector<DNNTensor>& tensors);
-
 class GesturePreProcess {
  public:
   explicit GesturePreProcess(const std::string& json_str) {
@@ -61,7 +59,7 @@ class GesturePreProcess {
   int Init(const std::string& json_str);
   int Execute(const ai_msgs::msg::PerceptionTargets::ConstSharedPtr msg,
               const std::vector<hbDNNTensorProperties>& input_model_info_,
-              std::vector<std::vector<DNNTensor>>& input_tensors,
+              std::vector<std::shared_ptr<DNNTensor>>& input_tensors,
               std::vector<uint64_t>& track_ids,
               uint64_t& ts);
 
