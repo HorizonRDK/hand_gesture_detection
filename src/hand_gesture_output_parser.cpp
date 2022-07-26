@@ -22,7 +22,7 @@
 
 namespace inference {
 int32_t HandGestureOutputParser::Parse(
-    std::shared_ptr<DNNResult>& output,
+    std::shared_ptr<HandGestureResult>& output,
     std::vector<std::shared_ptr<InputDescription>>& input_descriptions,
     std::shared_ptr<OutputDescription>& output_description,
     std::shared_ptr<DNNTensor>& output_tensor) {
