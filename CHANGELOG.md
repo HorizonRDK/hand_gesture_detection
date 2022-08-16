@@ -1,5 +1,11 @@
 # Changelog for package hand_gesture_detection
 
+hhp_1.0.5 (2022-08-12)
+------------------
+1. launch启动脚本中支持选择使用MIPI/USB类型摄像头。
+2. 修复特定场景下发布的算法推理输出帧率数据错误的问题。
+
+
 hhp_1.0.4 (2022-07-26)
 ------------------
 1. 适配hhp_1.0.4版本dnn_node。

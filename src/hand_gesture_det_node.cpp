@@ -443,6 +443,33 @@ void HandGestureDetNode::AiMsgProcess(
     ai_msg->set__targets(msg->targets);
     ai_msg->set__disappeared_targets(msg->disappeared_targets);
     ai_msg->set__perfs(msg->perfs);
+    {
+      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
+      if (!output_tp_) {
+        output_tp_ =
+            std::make_shared<std::chrono::high_resolution_clock::time_point>();
+        *output_tp_ = std::chrono::system_clock::now();
+      }
+      auto tp_now = std::chrono::system_clock::now();
+      output_frameCount_++;
+      auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          tp_now - *output_tp_)
+                          .count();
+      if (interval >= 1000) {
+        float out_fps = static_cast<float>(output_frameCount_) /
+                        (static_cast<float>(interval) / 1000.0);
+        RCLCPP_WARN(rclcpp::get_logger("hand_gesture_det"),
+                    "Pub smart fps %.2f",
+                    out_fps);
+
+        smart_fps_ = round(out_fps);
+        output_frameCount_ = 0;
+        *output_tp_ = std::chrono::system_clock::now();
+      }
+    }
+    if (smart_fps_ > 0) {
+      pub_ai_msg->set__fps(smart_fps_);
+    }
     msg_publisher_->publish(std::move(ai_msg));
   };
 
@@ -454,11 +481,6 @@ void HandGestureDetNode::AiMsgProcess(
       gesture_preprocess_->Execute(
           msg, input_model_info_, input_tensors, *track_ids, timestamp) != 0 ||
       input_tensors.empty()) {
-    {
-      std::unique_lock<std::mutex> lk(frame_stat_mtx_);
-      output_frameCount_++;
-    }
-
     pub_msg();
     return;
   }
