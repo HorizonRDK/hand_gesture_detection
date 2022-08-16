@@ -468,7 +468,7 @@ void HandGestureDetNode::AiMsgProcess(
       }
     }
     if (smart_fps_ > 0) {
-      pub_ai_msg->set__fps(smart_fps_);
+      ai_msg->set__fps(smart_fps_);
     }
     msg_publisher_->publish(std::move(ai_msg));
   };
