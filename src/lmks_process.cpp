@@ -256,8 +256,8 @@ void LmksProcess::Clean(uint64_t timestamp) {
       continue;
     }
     if (timestamp - track_last_update_ts >= clean_ts_diff_ms_) {
-      itr++;
       int disappeared_track_id = itr->first;
+      itr++;
       track_buffers_[disappeared_track_id].Clean();
       track_buffers_.erase(disappeared_track_id);
     }
