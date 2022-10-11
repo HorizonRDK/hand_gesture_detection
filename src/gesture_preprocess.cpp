@@ -554,7 +554,8 @@ int GesturePreProcess::Execute(
 
   lmks_proc_.Clean(disappeared_hand_ids);
   // 用于没有mot场景下的缓存清理
-  // lmks_proc_.Clean(timestamp);
+  // 或者没有订阅到消失的ID
+  lmks_proc_.Clean(timestamp);
 
   return 0;
 }

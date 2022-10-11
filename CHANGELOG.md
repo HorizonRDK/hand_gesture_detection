@@ -1,5 +1,10 @@
 # Changelog for package hand_gesture_detection
 
+tros_1.1.3 (2022-10-11)
+------------------
+1. 修复算法前处理缓存导致的内存泄漏问题。
+
+
 hhp_1.0.5 (2022-08-12)
 ------------------
 1. launch启动脚本中支持选择使用MIPI/USB类型摄像头。
