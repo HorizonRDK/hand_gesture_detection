@@ -1,6 +1,6 @@
 # Changelog for package hand_gesture_detection
 
-tros_1.1.3 (2022-10-11)
+tros_1.1.2rc1 (2022-10-11)
 ------------------
 1. 修复算法前处理缓存导致的内存泄漏问题。
 
