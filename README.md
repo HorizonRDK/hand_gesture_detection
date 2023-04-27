@@ -141,7 +141,7 @@ cp -r install/lib/hand_lmk_detection/config/ .
 cp -r install/lib/hand_gesture_detection/config/ .
 
 # 启动launch文件
-ros2 launch install/share/hand_gesture_detection/launch/hobot_hand_gesture_detection.launch.py
+ros2 launch install/share/hand_gesture_detection/launch/hand_gesture_detection.launch.py
 
 ```
 
