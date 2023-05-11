@@ -1,5 +1,11 @@
 # Changelog for package hand_gesture_detection
 
+tros_2.0.0 (2023-05-11)
+------------------
+1. 更新package.xml，支持应用独立打包
+2. 更新应用启动launch脚本
+
+
 tros_1.1.2rc1 (2022-10-11)
 ------------------
 1. 修复算法前处理缓存导致的内存泄漏问题。
