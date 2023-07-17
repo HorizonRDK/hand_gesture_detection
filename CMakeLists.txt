@@ -46,9 +46,9 @@ include_directories(include
 if(PLATFORM_X3)
   message("build platform X3")
   add_definitions(-DPLATFORM_X3)
-elseif(PLATFORM_J5)
-  message("build ${PROJECT_NAME} for platform J5")
-  add_definitions(-DPLATFORM_J5)
+elseif(PLATFORM_X5ultra)
+  message("build ${PROJECT_NAME} for platform X5ultra")
+  add_definitions(-DPLATFORM_X5ultra)
 elseif(PLATFORM_X86)
   message("build platform X86")
   add_definitions(-DPLATFORM_X86)
@@ -96,9 +96,9 @@ install(
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
-if(PLATFORM_J5)
+if(PLATFORM_X5ultra)
   install(DIRECTORY
-    ${PROJECT_SOURCE_DIR}/config/J5/
+    ${PROJECT_SOURCE_DIR}/config/X5ultra/
     DESTINATION lib/${PROJECT_NAME}/config/
   )
 else()
