@@ -1,91 +1,100 @@
 # 功能介绍
 
-hand_gesture_detection package是使用hobot_dnn package开发的手势识别算法示例，在地平线X3开发板上使用手势识别模型和人手检测数据利用BPU处理器进行模型推理。
+手势识别算法示例订阅包含人手框、人手关键点信息的算法msg，利用BPU进行推理，发布包含手势信息的智能结果msg。
 
-算法支持的手势识别类别如下：
+算法支持的手势识别类别，以及手势类别在算法msg（Attribute成员，type为"gesture"）中对应的数值如下：
 
-```
-Background = 0,
-ThumbUp = 2,  // 竖起大拇指
-Victory = 3,  // “V”手势
-Mute = 4,  // “嘘”手势
-Palm = 5,  // 手掌
-Okay = 11,  // OK手势
-ThumbLeft = 12,  // 大拇指向左
-ThumbRight = 13,  // 大拇指向右
-Awesome = 14  // 666手势
-```
+| 手势       | 说明 | 数值 |
+| ---------- | ---------- | ---------- |
+| ThumbUp    | 竖起大拇指 | 2 |
+| Victory    | “V”手势    | 3 |
+| Mute       | “嘘”手势   | 4 |
+| Palm       | 手掌       | 5 |
+| Okay       | OK手势     | 11 |
+| ThumbLeft  | 大拇指向左 | 12 |
+| ThumbRight | 大拇指向右 | 13 |
+| Awesome    | 666手势    | 14 |
 
-示例订阅包含人手关键点信息的ai msg，发布包含手势识别信息的ai msg，用户可以订阅发布的ai msg用于应用开发。
+代码仓库：
 
-# 编译
+<https://github.com/HorizonRDK/hand_lmk_detection>
 
-## 依赖库
+<https://github.com/HorizonRDK/hand_gesture_detection>
+
+<https://github.com/HorizonRDK/mono2d_body_detection>
+
+应用场景：手势识别算法集成了人手关键点检测，手势分析等技术，使得计算机能够将人的手势解读为对应指令，可实现手势控制以及手语翻译等功能，主要应用于智能家居，智能座舱、智能穿戴设备等领域。
+
+# 物料清单
+
+| 机器人名称          | 生产厂家 | 参考链接                                                     |
+| :------------------ | -------- | ------------------------------------------------------------ |
+| RDK X3             | 多厂家 | [点击跳转](https://developer.horizon.ai/sunrise) |
+| camera             | 多厂家 | MIPI cam:[F37 200W像素](https://detail.tmall.com/item.htm?abbucket=12&id=683310105141&ns=1&spm=a230r.1.14.28.1dd135f0wI2LwA&skuId=4897731532963)/[GC4663 400W像素](https://detail.tmall.com/item.htm?abbucket=12&id=683310105141&ns=1&spm=a230r.1.14.28.1dd135f0wI2LwA&skuId=4897731532963)/[IMX219 800W像素](https://detail.tmall.com/item.htm?abbucket=9&id=710344235988&rn=259e73f46059c2e6fc9de133ba9ddddf&spm=a1z10.5-b-s.w4011-22651484606.159.55df6a83NWrGPi)或usb cam|
 
 
-ros package：
+# 使用方法
 
-- dnn_node
-- ai_msgs
+## 准备工作
 
-dnn_node是在地平线X3开发板上利用BPU处理器进行模型推理的pkg，定义在hobot_dnn中。
+- 地平线RDK已烧录好地平线提供的Ubuntu 20.04系统镜像
+- 摄像头正确连接到RDK X3
 
-ai_msgs为自定义的消息格式，用于算法模型推理后，发布推理结果，ai_msgs pkg定义在hobot_msgs中。
+# 使用方法
 
-## 开发环境
+**1.安装功能包**
 
-- 编程语言: C/C++
-- 开发平台: X3/X86
-- 系统版本：Ubuntu 20.0.4
-- 编译工具链:Linux GCC 9.3.0/Linaro GCC 9.3.0
+启动机器人后，通过终端或者VNC连接机器人，点击本页面右上方的“一键部署”按钮，复制如下命令在RDK的系统上运行，完成相关Node的安装。
 
-## 编译
-
- 支持在X3 Ubuntu系统上编译和在PC上使用docker交叉编译两种方式。
-
-### Ubuntu板端编译
-
-1. 编译环境确认 
-   - 板端已安装X3 Ubuntu系统。
-   - 当前编译终端已设置TogetherROS环境变量：`source PATH/setup.bash`。其中PATH为TogetherROS的安装路径。
-   - 已安装ROS2编译工具colcon，安装命令：`pip install -U colcon-common-extensions`
-2. 编译
-
-编译命令：`colcon build --packages-select hand_gesture_detection`
-
-### Docker交叉编译
-
-1. 编译环境确认
-
-   - 在docker中编译，并且docker中已经安装好TogetherROS。docker安装、交叉编译说明、TogetherROS编译和部署说明详见机器人开发平台robot_dev_config repo中的README.md。
-
-2. 编译
-
-   - 编译命令：
-
-```
-export TARGET_ARCH=aarch64
-export TARGET_TRIPLE=aarch64-linux-gnu
-export CROSS_COMPILE=/usr/bin/$TARGET_TRIPLE-
-
-colcon build --packages-select hand_gesture_detection \
-   --merge-install \
-   --cmake-force-configure \
-   --cmake-args \
-   --no-warn-unused-cli \
-   -DCMAKE_TOOLCHAIN_FILE=`pwd`/robot_dev_config/aarch64_toolchainfile.cmake
+```bash
+sudo apt update
+sudo apt install -y tros-hand-gesture-detection
 ```
 
-## 注意事项
+**2.运行人手关键点检测功能**
 
-# 使用介绍
+**使用MIPI摄像头发布图片**
 
-## 依赖
+```shell
+# 配置tros.b环境
+source /opt/tros/setup.bash
 
-- mipi_cam package：发布图片msg
-- mono2d_body_detection package：发布人体、人头、人脸、人手框感知msg
-- hand_lmk_detection package：发布人手关键点感知msg
-- websocket package：渲染图片和ai感知msg
+# 从tros.b的安装路径中拷贝出运行示例需要的配置文件。
+cp -r /opt/tros/lib/mono2d_body_detection/config/ .
+cp -r /opt/tros/lib/hand_lmk_detection/config/ .
+cp -r /opt/tros/lib/hand_gesture_detection/config/ .
+
+# 配置MIPI摄像头
+export CAM_TYPE=mipi
+
+# 启动launch文件
+ros2 launch hand_gesture_detection hand_gesture_detection.launch.py
+```
+
+**使用USB摄像头发布图片**
+
+```shell
+# 配置tros.b环境
+source /opt/tros/setup.bash
+
+# 从tros.b的安装路径中拷贝出运行示例需要的配置文件。
+cp -r /opt/tros/lib/mono2d_body_detection/config/ .
+cp -r /opt/tros/lib/hand_lmk_detection/config/ .
+cp -r /opt/tros/lib/hand_gesture_detection/config/ .
+
+# 配置USB摄像头
+export CAM_TYPE=usb
+
+# 启动launch文件
+ros2 launch hand_gesture_detection hand_gesture_detection.launch.py
+```
+
+**3.查看效果**
+
+打开同一网络电脑的浏览器，访问IP地址（浏览器输入http://IP:8000，IP为地平线RDK的IP地址），即可看到视觉识别的实时效果:
+![](./imgs/gesture_render.jpeg)
+
+# 接口说明
 
 ## 参数
 
@@ -96,113 +105,12 @@ colcon build --packages-select hand_gesture_detection \
 | ai_msg_pub_topic_name  | std::string | 发布包含人手关键点检测结果的AI消息的topic名 | 否       | 根据实际部署环境配置 | /hobot_hand_gesture_detection |
 | ai_msg_sub_topic_name_ | std::string | 订阅包含人手框检测结果的AI消息的topic名     | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection     |
 
-## 运行
-
-编译成功后，将生成的install路径拷贝到地平线X3开发板上（如果是在X3上编译，忽略拷贝步骤），并执行如下命令运行：
-
-### **Ubuntu**
-
-运行方式1，使用ros2 run启动：
-```
-export COLCON_CURRENT_PREFIX=./install
-source ./install/setup.bash
-# config中为示例使用的模型，根据实际安装路径进行拷贝
-# 如果是板端编译（无--merge-install编译选项），拷贝命令为cp -r install/PKG_NAME/lib/PKG_NAME/config/ .，其中PKG_NAME为具体的package名。
-cp -r install/lib/mono2d_body_detection/config/ .
-cp -r install/lib/hand_lmk_detection/config/ .
-cp -r install/lib/hand_gesture_detection/config/ .
-
-# 启动图片发布pkg
-ros2 run mipi_cam mipi_cam --ros-args -p out_format:=nv12 -p image_width:=960 -p image_height:=544 -p io_method:=shared_mem --log-level error &
-# 启动jpeg图片编码&发布pkg
-ros2 run hobot_codec hobot_codec_republish --ros-args -p channel:=1 -p in_mode:=shared_mem -p in_format:=nv12 -p out_mode:=ros -p out_format:=jpeg -p sub_topic:=/hbmem_img -p pub_topic:=/image_jpeg --ros-args --log-level error &
-# 启动单目rgb人体、人头、人脸、人手框和人体关键点检测pkg
-ros2 run mono2d_body_detection mono2d_body_detection --ros-args --log-level error &
-# 启动人手关键点检测pkg
-ros2 run hand_lmk_detection hand_lmk_detection --ros-args --log-level error &
-# 启动web展示pkg
-ros2 run websocket websocket --ros-args -p image_topic:=/image_jpeg -p image_type:=mjpeg -p smart_topic:=/hobot_hand_gesture_detection --log-level error &
 
 
-# 启动手势识别pkg
-ros2 run hand_gesture_detection hand_gesture_detection
+# 参考资料
+小车手势控制案例：[5.5. 小车手势控制 — 地平线机器人平台用户手册](../apps/car_gesture_control)
 
-```
-
-运行方式2，使用launch文件启动：
-
-```
-export COLCON_CURRENT_PREFIX=./install
-source ./install/setup.bash
-# config中为示例使用的模型，根据实际安装路径进行拷贝
-# 如果是板端编译（无--merge-install编译选项），拷贝命令为cp -r install/PKG_NAME/lib/PKG_NAME/config/ .，其中PKG_NAME为具体的package名。
-cp -r install/lib/mono2d_body_detection/config/ .
-cp -r install/lib/hand_lmk_detection/config/ .
-cp -r install/lib/hand_gesture_detection/config/ .
-
-# 启动launch文件
-ros2 launch install/share/hand_gesture_detection/launch/hand_gesture_detection.launch.py
-
-```
-
-### **Linux**
-
-```
-export ROS_LOG_DIR=/userdata/
-export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:./install/lib/
-
-# config中为示例使用的模型，根据实际安装路径进行拷贝
-cp -r install/lib/mono2d_body_detection/config/ .
-cp -r install/lib/hand_lmk_detection/config/ .
-cp -r install/lib/hand_gesture_detection/config/ .
-
-# 启动图片发布pkg
-./install/lib/mipi_cam/mipi_cam --ros-args -p out_format:=nv12 -p image_width:=960 -p image_height:=544 -p io_method:=shared_mem --log-level error &
-# 启动jpeg图片编码&发布pkg
-./install/lib/hobot_codec/hobot_codec_republish --ros-args -p channel:=1 -p in_mode:=shared_mem -p in_format:=nv12 -p out_mode:=ros -p out_format:=jpeg -p sub_topic:=/hbmem_img -p pub_topic:=/image_jpeg --ros-args --log-level error &
-# 启动单目rgb人体、人头、人脸、人手框和人体关键点检测pkg
-./install/lib/mono2d_body_detection/mono2d_body_detection --ros-args --log-level error &
-# 启动人手关键点检测pkg
-./install/lib/hand_lmk_detection/hand_lmk_detection --ros-args --log-level error &
-# 启动web展示pkg
-./install/lib/websocket/websocket --ros-args -p image_topic:=/image_jpeg -p image_type:=mjpeg -p smart_topic:=/hobot_hand_gesture_detection --log-level error &
-
-# 启动手势识别pkg
-./install/lib/hand_gesture_detection/hand_gesture_detection
-
-```
-
-## 注意事项
-
-1. 板端使用launch启动，需要安装依赖，安装命令：`pip3 install lark-parser`。设备上只需要配置一次，断电重启不需要重新配置。
-
-2. 第一次运行web展示需要启动webserver服务，运行方法为:
-
-- cd 到websocket的部署路径下：`cd install/lib/websocket/webservice/`（如果是板端编译（无--merge-install编译选项）执行命令为`cd install/websocket/lib/websocket/webservice`）
-- 启动nginx：`chmod +x ./sbin/nginx && ./sbin/nginx -p .`
-
-# 结果分析
-
-## X3结果展示
-
-```
-[INFO] [1652147556.777256679] [post process]: track_id: 2, act val: 0, score: 0.999955, threshold: 0.95, max_group_index: 0, max_group_score: 0.999955
-[INFO] [1652147556.785721801] [hand gesture det node]: Recved ai msg, frame_id: 1184, stamp: 1652147556_624171980
-[INFO] [1652147556.786027119] [preprocess]: target id: 2 has hand roi size: 1
-[INFO] [1652147556.786285856] [preprocess]: hand lmk size: 1
-[INFO] [1652147556.788131057] [preprocess]: target id: 5 has hand roi size: 1
-[INFO] [1652147556.788318256] [preprocess]: hand lmk size: 1
-[INFO] [1652147556.792984566] [post process]: track_id: 2, act val: 0, score: 0.999978, threshold: 0.95, max_group_index: 0, max_group_score: 0.999978
-[INFO] [1652147556.793831690] [post process]: track_id: 5, act val: 4, score: 0.999978, threshold: 0.5, max_group_index: 4, max_group_score: 0.999978
-[WARN] [1652147556.797141860] [hand gesture det node]: publish msg, frame_id: 1184, stamp: 1652147556_624171980
-         target id: 2, attr type: gesture, val: 0
-         target id: 5, attr type: gesture, val: 4
-```
-
-以上log截取了一帧的处理结果，结果显示，订阅到的ai msg中有两个hand（包含人手框和人手关键点检测结果），手势识别算法输出的手势分类结果分别是无手势（分类结果为0）和“嘘”手势（分类结果为4）。
-
-## web效果展示
-
-
+基于手势识别以及人体姿态分析实现游戏人物控制案例：[玩转X3派，健身游戏两不误](https://developer.horizon.cc/forumDetail/112555512834430487)
 
 # 常见问题
+
