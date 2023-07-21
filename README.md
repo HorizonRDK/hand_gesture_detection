@@ -33,47 +33,16 @@
 
 # 使用方法
 
-## 话题
-
-人体识别和手势唤醒的结果都通过[hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)话题发布，该话题的详细定义如下：
-```shell
-# 感知结果
-
-# 消息头
-std_msgs/Header header
-
-# 感知结果的处理帧率
-# fps val is invalid if fps is less than 0
-int16 fps
-
-# 性能统计信息，比如记录每个模型推理的耗时
-Perf[] perfs
-
-# 感知目标集合
-Target[] targets
-
-# 消失目标集合
-Target[] disappeared_targets
-```
-
-| 名称                 | 消息类型        | 说明|
-| ---------------------- | ----------- |---------------------------- |
-| /hobot_hand_gesture_detection     | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)     | 发布识别到的手势目标信息（开启手势唤醒之后才会出现） |
-| /hobot_mono2d_body_detection          | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)   | 订阅前一个node识别到的人体目标信息，包括人体框、人手框、人体关键点 |
-| /hobot_hand_lmk_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)  |  订阅前一个node识别到的手势关键点信息（开启手势唤醒之后才会出现） |
-| /hbmem_img | [hobot_msgs/hbm_img_msgs/msg/HbmMsg1080P](https://github.com/HorizonRDK/hobot_msgs/blob/develop/hbm_img_msgs/msg/HbmMsg1080P.msg)  | 当is_shared_mem_sub == 1时，用shared mem通信方式订阅上一个node发布图像数据|
-| /image_raw | hsensor_msgs/msg/Image  |  当is_shared_mem_sub == 0时，订阅用ros的普通方式订阅上一个node发布相关的图像数据|
-
 **1.安装功能包**
 
-启动机器人后，通过终端或者VNC连接机器人，点击本页面右上方的“一键部署”按钮，复制如下命令在RDK的系统上运行，完成相关Node的安装。
+启动机器人后，通过SSH终端或者VNC连接机器人，点击本页面右上方的“一键部署”按钮，复制如下命令在RDK的系统上运行，完成相关Node的安装。
 
 ```bash
 sudo apt update
 sudo apt install -y tros-hand-gesture-detection
 ```
 
-**2.运行人手关键点检测功能**
+**2.运行人手识别检测功能**
 
 **使用MIPI摄像头发布图片**
 
@@ -118,14 +87,45 @@ ros2 launch hand_gesture_detection hand_gesture_detection.launch.py
 
 # 接口说明
 
+## 话题
+
+人体识别和手势唤醒的结果都通过[hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)话题发布，该话题的详细定义如下：
+```shell
+# 感知结果
+
+# 消息头
+std_msgs/Header header
+
+# 感知结果的处理帧率
+# fps val is invalid if fps is less than 0
+int16 fps
+
+# 性能统计信息，比如记录每个模型推理的耗时
+Perf[] perfs
+
+# 感知目标集合
+Target[] targets
+
+# 消失目标集合
+Target[] disappeared_targets
+```
+
+| 名称                 | 消息类型        | 说明|
+| ---------------------- | ----------- |---------------------------- |
+| /hobot_hand_gesture_detection     | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)     | 发布识别到的手势目标信息（开启手势唤醒之后才会出现） |
+| /hobot_mono2d_body_detection          | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)   | 订阅前一个node识别到的人体目标信息，包括人体框、人手框、人体关键点 |
+| /hobot_hand_lmk_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)  |  订阅前一个node识别到的手关键点信息（开启手势唤醒之后才会出现） |
+| /hbmem_img | [hobot_msgs/hbm_img_msgs/msg/HbmMsg1080P](https://github.com/HorizonRDK/hobot_msgs/blob/develop/hbm_img_msgs/msg/HbmMsg1080P.msg)  | 当is_shared_mem_sub == 1时，用shared mem通信方式订阅上一个node发布图像数据|
+| /image_raw | hsensor_msgs/msg/Image  |  当is_shared_mem_sub == 0时，订阅用ros的普通方式订阅上一个node发布相关的图像数据|
+
 ## 参数
 
 | 参数名                 | 类型        | 解释                                        | 是否必须 | 支持的配置           | 默认值                        |
 | ---------------------- | ----------- | ------------------------------------------- | -------- | -------------------- | ----------------------------- |
 | is_sync_mode           | int         | 同步/异步推理模式。0：异步模式；1：同步模式 | 否       | 0/1                  | 0                             |
 | model_file_name        | std::string | 推理使用的模型文件                          | 否       | 根据实际模型路径配置 | config/handLMKs.hbm           |
-| ai_msg_pub_topic_name   | std::string | 发布包含手势类别检测结果的AI消息的topic名 | 否       | 根据实际部署环境配置 | /hobot_hand_gesture_detection |
-| ai_msg_sub_topic_name | std::string | 订阅包含人手关键点结果的AI消息的topic名     | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection     |
+| ai_msg_pub_topic_name   | std::string | 发布包含手势类别检测结果的智能消息的topic名 | 否       | 根据实际部署环境配置 | /hobot_hand_gesture_detection |
+| ai_msg_sub_topic_name | std::string | 订阅包含人手关键点结果的智能消息的topic名     | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection     |
 
 
 # 参考资料
