@@ -15,13 +15,6 @@
 | ThumbRight | 大拇指向右 | 13 |
 | Awesome    | 666手势    | 14 |
 
-代码仓库：
-
-<https://github.com/HorizonRDK/hand_lmk_detection>
-
-<https://github.com/HorizonRDK/hand_gesture_detection>
-
-<https://github.com/HorizonRDK/mono2d_body_detection>
 
 应用场景：手势识别算法集成了人手关键点检测，手势分析等技术，使得计算机能够将人的手势解读为对应指令，可实现手势控制以及手语翻译等功能，主要应用于智能家居，智能座舱、智能穿戴设备等领域。
 
@@ -41,6 +34,37 @@
 - 摄像头正确连接到RDK X3
 
 # 使用方法
+
+## 话题
+
+人体识别和手势唤醒的结果都通过[hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)话题发布，该话题的详细定义如下：
+```shell
+# 感知结果
+
+# 消息头
+std_msgs/Header header
+
+# 感知结果的处理帧率
+# fps val is invalid if fps is less than 0
+int16 fps
+
+# 性能统计信息，比如记录每个模型推理的耗时
+Perf[] perfs
+
+# 感知目标集合
+Target[] targets
+
+# 消失目标集合
+Target[] disappeared_targets
+```
+
+| 名称                 | 消息类型        | 说明|
+| ---------------------- | ----------- |---------------------------- |
+| /hobot_hand_gesture_detection     | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)     | 发布识别到的手势目标信息（开启手势唤醒之后才会出现） |
+| /hobot_mono2d_body_detection          | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)   | 订阅前一个node识别到的人体目标信息，包括人体框、人手框、人体关键点 |
+| /hobot_hand_lmk_detection | [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg)  |  订阅前一个node识别到的手势关键点信息（开启手势唤醒之后才会出现） |
+| /hbmem_img | [hobot_msgs/hbm_img_msgs/msg/HbmMsg1080P](https://github.com/HorizonRDK/hobot_msgs/blob/develop/hbm_img_msgs/msg/HbmMsg1080P.msg)  | 当is_shared_mem_sub == 1时，用shared mem通信方式订阅上一个node发布图像数据|
+| /image_raw | hsensor_msgs/msg/Image  |  当is_shared_mem_sub == 0时，订阅用ros的普通方式订阅上一个node发布相关的图像数据|
 
 **1.安装功能包**
 
@@ -102,9 +126,8 @@ ros2 launch hand_gesture_detection hand_gesture_detection.launch.py
 | ---------------------- | ----------- | ------------------------------------------- | -------- | -------------------- | ----------------------------- |
 | is_sync_mode           | int         | 同步/异步推理模式。0：异步模式；1：同步模式 | 否       | 0/1                  | 0                             |
 | model_file_name        | std::string | 推理使用的模型文件                          | 否       | 根据实际模型路径配置 | config/handLMKs.hbm           |
-| ai_msg_pub_topic_name  | std::string | 发布包含人手关键点检测结果的AI消息的topic名 | 否       | 根据实际部署环境配置 | /hobot_hand_gesture_detection |
-| ai_msg_sub_topic_name_ | std::string | 订阅包含人手框检测结果的AI消息的topic名     | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection     |
-
+| ai_msg_pub_topic_name   | std::string | 发布包含手势类别检测结果的AI消息的topic名 | 否       | 根据实际部署环境配置 | /hobot_hand_gesture_detection |
+| ai_msg_sub_topic_name | std::string | 订阅包含人手关键点结果的AI消息的topic名     | 否       | 根据实际部署环境配置 | /hobot_hand_lmk_detection     |
 
 
 # 参考资料
@@ -112,5 +135,4 @@ ros2 launch hand_gesture_detection hand_gesture_detection.launch.py
 
 基于手势识别以及人体姿态分析实现游戏人物控制案例：[玩转X3派，健身游戏两不误](https://developer.horizon.cc/forumDetail/112555512834430487)
 
-# 常见问题
 
