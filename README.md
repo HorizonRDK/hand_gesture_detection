@@ -48,7 +48,6 @@ sudo apt install -y tros-hand-gesture-detection
 
 ```shell
 # Configure the tros.b environment
-``````shell
 source /opt/tros/setup.bash
 
 # Copy the configuration files required for running examples from the installation path of tros.b.
@@ -91,6 +90,7 @@ Open a browser on the same network computer and visit [http://IP:8000](http://IP
 ## Topics
 
 The results of human body recognition and gesture awakening are published through the [hobot_msgs/ai_msgs/msg/PerceptionTargets](https://github.com/HorizonRDK/hobot_msgs/blob/develop/ai_msgs/msg/PerceptionTargets.msg) topic. The detailed definition of this topic is as follows:
+
 ```shell
 # Perception Result
 
@@ -99,7 +99,7 @@ std_msgs/Header header
 
 # Frame rate of perception results
 # fps val is invalid if fps is less than 0
-``````markdown
+
 int16 fps
 
 # Performance statistics, such as recording the time consumption of each model inference
@@ -110,6 +110,7 @@ Target[] targets
 
 # Disappeared target collection
 Target[] disappeared_targets
+```
 
 | Name                 | Message Type        | Description|
 | ---------------------- | ----------- |---------------------------- |
@@ -131,4 +132,4 @@ Target[] disappeared_targets
 # Reference
 
 Implementation of game character control based on gesture recognition and human pose analysis: [Playing X3 Pie, a fitness game with two birds](https://developer.horizon.cc/forumDetail/112555512834430487)
-```
+
